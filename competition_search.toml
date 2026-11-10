@@ -1,0 +1,37 @@
+# =============================================================================
+#  SETTINGS SEARCH for the competition system
+#
+#  Every combination below is backtested walk-forward on the development data
+#  (start_date .. holdout_start in competition.toml), and also on shuffled
+#  histories to see whether the best result is just luck.
+#
+#    uv run competition-search                    # real data only: ranking
+#    uv run competition-search --worker 0 --hours 2   # + shuffled histories
+#    uv run competition-search-report             # p-values
+#
+#  Anything not listed here comes from competition.toml.
+# =============================================================================
+
+[search]
+# The competition needs >= 30 trading days in ~3 years. Settings that trade on
+# fewer than this many days in the 4-year development window don't count.
+min_active_days = 80
+
+[feature_sets]
+reversal_1 = ["return_1d"]
+rsi = ["rsi_2"]
+bar = ["bar_position"]
+market = ["market_intraday_1d"]
+reversal_3 = ["return_1d", "intraday_1d", "overnight_1d"]
+reversal_6 = ["return_1d", "intraday_1d", "overnight_1d", "rsi_2", "bar_position", "market_intraday_1d"]
+reversal_momentum = ["return_1d", "intraday_1d", "overnight_1d", "rsi_2", "bar_position", "market_intraday_1d",
+                     "momentum_60", "relative_momentum_60", "intraday_drift_60"]
+everything = ["return_1d", "return_2d", "intraday_1d", "overnight_1d", "rsi_2", "rsi_5", "bar_position",
+              "relative_return_1d", "market_return_1d", "market_intraday_1d", "momentum_60", "momentum_250",
+              "relative_momentum_60", "intraday_drift_60", "distance_from_sma200", "volume_z", "range_z",
+              "volatility_ratio"]
+
+[grid]
+"sizing.hurdle_bps" = [5.0, 10.0, 15.0, 20.0, 30.0]
+"sizing.long_only" = [false, true]
+"model.ridge" = [0.05, 1.0]

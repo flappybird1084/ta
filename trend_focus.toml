@@ -1,0 +1,211 @@
+# TREND-FOCUSED PORTFOLIO, picked from the permutation test (results/permutation):
+#   volatility_scaled_trend (only one to pass the family-wise test) at weight 3,
+#   trend_strength_filter and lead_lag (significant alone) at weight 1 each.
+# Weights were fixed BEFORE looking at 2022+ data. include_holdout = true: this
+# is the one-off honest test, so don't tune it on the holdout results.
+# =============================================================================
+#  BACKTEST SETTINGS - this is the only file you need to edit.
+#
+#  Run it with:    uv run backtest
+#  (or try a copy: uv run backtest --config my_experiment.toml)
+#
+#  Every strategy below has:
+#    enabled = true / false   switch it on or off
+#    weight  = 1.0            how much of the portfolio it gets, RELATIVE to the
+#                             others. Two strategies at 3 and 1 get 75% and 25%.
+#  ...plus its own settings. The numbers shown are the defaults. Days always
+#  means trading days (about 21 per month, 252 per year).
+#
+#  Each strategy's code lives in src/bse_quant/strategies/sNN_<name>.py
+# =============================================================================
+
+[backtest]
+data_folder = "data"          # folder holding the Asset_*.csv files
+results_folder = "results/trend_focus"    # where the summary, daily returns and chart are saved
+start_date = "2017-11-01"     # first day to count (earlier data is warm-up for indicators)
+holdout_start = "2022-01-01"  # data from here on is kept aside for a final, honest test...
+include_holdout = true       # ...switch to true only once you're done tuning
+cost_bps = 5.0                # trading cost per trade, in basis points (5 = 0.05%)
+allow_short = true            # false = long-only (any short position becomes flat)
+
+# Strategies differ a lot in how much they move. With this on, each one is
+# scaled to the same risk level first, so `weight` really means "share of risk".
+normalize_strategy_risk = true
+strategy_risk_target = 0.10         # 10% annual volatility per strategy
+strategy_risk_lookback_days = 63    # how far back to measure each strategy's volatility
+strategy_max_leverage = 3.0         # never scale a strategy up more than this
+
+
+# ----------------------------------------------------------------------------- TREND / MOMENTUM
+
+[strategies.time_series_momentum]           # 1. long if up over the last year, short if down
+enabled = false
+weight = 1.0
+lookback_days = 252
+
+[strategies.moving_average_crossover]       # 2. long when the fast average is above the slow one
+enabled = false
+weight = 1.0
+fast_days = 50
+slow_days = 200
+
+[strategies.donchian_breakout]              # 3. buy new N-day highs, exit on shorter-term lows
+enabled = false
+weight = 1.0
+entry_days = 55
+exit_days = 20
+
+[strategies.cross_sectional_momentum]       # 4. long the recent winners, short the losers
+enabled = false
+weight = 1.0
+lookback_days = 126
+skip_days = 21          # ignore the most recent month (it tends to reverse)
+rebalance_days = 21
+top_n = 2
+bottom_n = 2
+
+[strategies.volatility_scaled_trend]        # 5. blended trend, smaller bets on wilder assets
+enabled = true
+weight = 3.0
+lookbacks = [21, 63, 126, 252]
+target_asset_vol = 0.2
+vol_lookback_days = 60
+max_leverage = 2.0
+
+[strategies.trend_strength_filter]          # 6. follow the trend only when it is a clean one
+enabled = true
+weight = 1.0
+lookback_days = 63
+min_efficiency = 0.3    # 0 = trade every trend, 1 = only perfectly straight lines
+
+
+# ----------------------------------------------------------------------------- MEAN REVERSION
+
+[strategies.short_term_reversal]            # 7. buy sharp drops, sell sharp pops
+enabled = false
+weight = 1.0
+lookback_days = 3
+threshold_z = 1.5        # how unusual the move must be (in standard deviations)
+vol_lookback_days = 60
+hold_days = 3
+trend_filter_days = 200  # only buy dips in uptrends (0 = no filter)
+
+[strategies.rsi_reversion]                  # 8. RSI(2) dips in an uptrend
+enabled = false
+weight = 1.0
+rsi_days = 2
+oversold = 10.0
+overbought = 90.0
+exit_level = 50.0
+trend_days = 200
+
+[strategies.bollinger_reversion]            # 9. fade stretches away from the moving average
+enabled = false
+weight = 1.0
+lookback_days = 20
+entry_z = 2.0
+exit_z = 0.5
+
+[strategies.gap_fade]                       # 10. fade big opening gaps, out by the close
+enabled = false
+weight = 1.0
+threshold_z = 1.0
+vol_lookback_days = 60
+
+[strategies.internal_bar_strength]          # 11. buy closes near the low, sell closes near the high
+enabled = false
+weight = 1.0
+low_threshold = 0.2
+high_threshold = 0.8
+
+
+# ----------------------------------------------------------------------------- RELATIVE VALUE
+
+[strategies.pairs_cointegration]            # 12. trade pairs that move together back into line
+enabled = false
+weight = 1.0
+formation_days = 252
+refit_days = 21
+max_pvalue = 0.05       # how strict the "do they really move together?" test is
+entry_z = 2.0
+exit_z = 0.5
+
+[strategies.kalman_pairs]                   # 13. same, with a hedge ratio that adapts daily
+enabled = false
+weight = 1.0
+delta = 1e-5                # how fast the relationship may drift
+observation_noise = 1e-4    # how noisy the relationship is day to day
+entry_z = 2.0
+exit_z = 0.5
+warmup_days = 60
+
+[strategies.pca_residual_reversion]         # 14. strip out the market move, fade what's left
+enabled = false
+weight = 1.0
+window_days = 60
+n_components = 1
+residual_days = 5
+entry_z = 1.5
+exit_z = 0.5
+
+[strategies.lead_lag]                       # 15. copy the asset that tends to move a day earlier
+enabled = true
+weight = 1.0
+window_days = 126
+min_correlation = 0.1
+
+
+# ----------------------------------------------------------------------------- VOLATILITY & VOLUME
+
+[strategies.volatility_regime_switch]       # 16. trend when calm, mean-revert when wild
+enabled = false
+weight = 1.0
+vol_days = 20
+regime_days = 252
+trend_days = 63
+reversion_days = 5
+
+[strategies.volatility_targeting]           # 17. scale the WHOLE portfolio to a steady risk level
+enabled = true
+weight = 1.0            # here weight means strength: 0 = no effect ... 1 = full effect
+target_vol = 0.1        # 10% a year
+lookback_days = 63
+max_leverage = 2.0
+
+[strategies.volume_shock]                   # 18. react to days with unusually heavy volume
+enabled = false
+weight = 1.0
+lookback_days = 20
+volume_z = 2.0
+mode = "continuation"   # "continuation" = follow the move, "reversal" = fade it
+hold_days = 5
+
+[strategies.obv_confirmation]               # 19. trend only when volume agrees
+enabled = false
+weight = 1.0
+ma_days = 50
+
+[strategies.range_compression_breakout]     # 20. narrow day, then trade the breakout
+enabled = false
+weight = 1.0
+nr_days = 7
+setup_window = 5
+hold_days = 10
+
+
+# ----------------------------------------------------------------------------- CALENDAR / STRUCTURE
+
+[strategies.overnight_intraday]             # 21. hold only overnight (or only during the day)
+enabled = false
+weight = 1.0
+session = "overnight"   # "overnight" or "intraday"
+direction = 1           # 1 = long, -1 = short
+
+[strategies.calendar_effects]               # 22. be long only on seasonally strong days
+enabled = false
+weight = 1.0
+turn_of_month = true
+days_before = 1
+days_after = 3
+pre_holiday = true
+weekdays = []           # e.g. ["Mon", "Fri"]

@@ -1,0 +1,41 @@
+[project]
+name = "bse-quant"
+version = "0.1.0"
+description = "Configurable multi-strategy backtester"
+readme = "README.md"
+authors = [
+    { name = "Rian Butala", email = "rianbutala@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "statsmodels>=0.15.0",
+]
+
+[project.scripts]
+backtest = "bse_quant.cli:main"
+permutation-test = "bse_quant.permutation_cli:worker_main"
+permutation-report = "bse_quant.permutation_cli:report_main"
+competition-backtest = "bse_quant.competition.cli:backtest_main"
+competition-search = "bse_quant.competition.cli:search_main"
+competition-search-report = "bse_quant.competition.cli:search_report_main"
+competition-fit = "bse_quant.competition.cli:fit_main"
+competition-score = "bse_quant.competition.score_cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+# Only the old pairs-cointegration speed-up uses this; the competition system doesn't need it.
+gpu = [
+    "jax[cuda12]>=0.12.0.1",
+]
+
+[tool.uv]
+default-groups = ["dev", "gpu"]

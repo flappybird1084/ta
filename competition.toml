@@ -1,0 +1,92 @@
+# =============================================================================
+#  COMPETITION SYSTEM SETTINGS
+#
+#  Run it with:    uv run competition-backtest
+#  (or try a copy: uv run competition-backtest --config my_experiment.toml)
+#
+#  The rules we trade under: weights are chosen after a day's close, bought at
+#  the next open and sold at that day's close. sum(|weights|) <= 100%. Every
+#  trade costs 0.05% to enter and 0.05% to exit (about 0.10% per day traded).
+#
+#  The SUBMITTED system is the blend in [sleeves] at the bottom. It was chosen
+#  with `uv run competition-score` (competition_score.toml), which estimates the
+#  rank-based competition score against assumed competitors. The sections above
+#  it are shared defaults; the settings search tools use them as one model.
+# =============================================================================
+
+[data]
+data_folder = "data"
+results_folder = "results/competition"
+train_start = "2017-01-01"     # first day the model learns from (earlier days warm up indicators)
+start_date = "2018-01-01"      # first day of the reported backtest (the model is re-fit as it goes)
+holdout_start = "2022-01-01"   # data from here on is kept aside for one final, honest check...
+include_holdout = false        # ...switch to true only once you're done tuning
+
+[model]
+ridge = 1.0                    # shrinks the model's coefficients; bigger = more cautious
+refit_days = 252               # re-fit the model this often (walk-forward)
+min_train_days = 252           # days of history before the first fit
+fit_intercept = false          # true = also learn the average daily drift
+
+[sizing]
+hurdle_bps = 15.0              # only trade when the forecast beats this (costs are ~10 bps)
+risk_per_trade = 0.01          # size each trade to move the account ~1% on a typical day
+max_asset_weight = 0.5         # largest weight in any one asset
+long_only = false              # true = never short
+floor_weight = 0.0             # 0 = off. e.g. 0.01 = on days with no trade, put 1% in the strongest forecast
+floor_weekday = -1             # -1 = every quiet day; 0..4 = only days decided on that weekday (4 = Friday)
+
+[risk]
+drawdown_limit = 0.0           # 0 = off. e.g. 0.10 = shrink positions once 10% below the peak
+drawdown_scale = 0.5           # ...by this much
+
+# Which features the model may use (true = on). Each one is described in
+# src/bse_quant/competition/features.py
+[features]
+return_1d = true               # today's return (big moves tend to reverse)
+return_2d = false
+intraday_1d = true             # today's open-to-close move
+overnight_1d = true            # this morning's opening gap
+rsi_2 = true                   # 2-day RSI (oversold / overbought)
+rsi_5 = false
+bar_position = true            # close near the day's low or high?
+relative_return_1d = false     # today's return vs. the other assets
+market_return_1d = false
+market_intraday_1d = true      # how the whole market did during the day
+momentum_60 = true             # 3-month trend
+momentum_250 = false           # 1-year trend
+relative_momentum_60 = true
+intraday_drift_60 = true       # does this asset tend to rise during the day?
+distance_from_sma200 = false
+volume_z = false               # unusual volume
+range_z = false                # unusually wide day
+volatility_ratio = false       # getting wilder or calmer
+
+# -----------------------------------------------------------------------------
+#  SLEEVES: several models run side by side; their weights are added up.
+#  Each sleeve takes its own share of the account (`weight`; the shares must add
+#  up to at most 1) and may override any [model] or [sizing] setting and the
+#  feature list. Delete this whole part to trade the single model above.
+#
+#  Why this blend: in competition-score trials (random 3-year histories vs.
+#  four assumed fields of other teams) it scored ~90/100 on average, vs ~75 for
+#  the previous single model at 1% risk. Small, selective trades keep the drawdown
+#  low (drawdown points), and the 1% floor keeps us above the 30-trading-day rule.
+# -----------------------------------------------------------------------------
+
+[sleeves.market_reversal]      # fade yesterday's market-wide intraday move
+weight = 0.5
+features = ["market_intraday_1d"]
+ridge = 0.25
+hurdle_bps = 25.0
+risk_per_trade = 0.01
+floor_weight = 0.01
+
+[sleeves.reversal_momentum]    # stock-level reversal + 3-month momentum / intraday drift
+weight = 0.5
+features = ["return_1d", "intraday_1d", "overnight_1d", "rsi_2", "bar_position", "market_intraday_1d",
+            "momentum_60", "relative_momentum_60", "intraday_drift_60"]
+ridge = 0.05
+hurdle_bps = 35.0
+risk_per_trade = 0.01
+floor_weight = 0.005

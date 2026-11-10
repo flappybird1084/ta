@@ -1,0 +1,52 @@
+{
+  "sleeves": {
+    "market_reversal": {
+      "names": [
+        "market_intraday_1d"
+      ],
+      "coefs": {
+        "market_intraday_1d": -0.03528747005858377
+      },
+      "scales": {
+        "market_intraday_1d": 1.0227692861583533
+      },
+      "intercept": 0.0
+    },
+    "reversal_momentum": {
+      "names": [
+        "return_1d",
+        "intraday_1d",
+        "overnight_1d",
+        "rsi_2",
+        "bar_position",
+        "market_intraday_1d",
+        "momentum_60",
+        "relative_momentum_60",
+        "intraday_drift_60"
+      ],
+      "coefs": {
+        "return_1d": -0.027698404067012822,
+        "intraday_1d": -0.04080860428126381,
+        "overnight_1d": 0.012006064382691074,
+        "rsi_2": 0.010272812954014185,
+        "bar_position": 0.04750703744234755,
+        "market_intraday_1d": -0.03676321301432594,
+        "momentum_60": 0.01712877282983367,
+        "relative_momentum_60": 0.019089557961690116,
+        "intraday_drift_60": 0.0025088826057337835
+      },
+      "scales": {
+        "return_1d": 1.0279302951075209,
+        "intraday_1d": 0.8185859018350774,
+        "overnight_1d": 0.6208344125686382,
+        "rsi_2": 31.271025560617936,
+        "bar_position": 0.3080728235940087,
+        "market_intraday_1d": 1.0246309170461352,
+        "momentum_60": 1.1237813875229266,
+        "relative_momentum_60": 0.9168100924644373,
+        "intraday_drift_60": 0.10746027892433371
+      },
+      "intercept": 0.0
+    }
+  }
+}

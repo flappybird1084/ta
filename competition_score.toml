@@ -1,0 +1,30 @@
+# =============================================================================
+#  SCORE SEARCH: which settings maximise our expected competition SCORE?
+#
+#    uv run competition-score
+#
+#  The score is rank-based (see src/bse_quant/competition/scoring.py), so we
+#  need assumed competitors: four "fields" are built in competitors.py. Each
+#  trial is a random ~3-year history glued together from 21-day blocks of real
+#  days; every candidate below is scored against each field in every trial.
+# =============================================================================
+
+[score]
+trials = 400
+trial_days = 756            # ~3 years, like the hidden evaluation
+block_days = 21
+our_min_active_days = 60    # safety margin: the rules need 30
+periods = { "2018-2021" = ["2018-01-01", "2021-12-31"], "2022-2023" = ["2022-01-01", "2023-12-31"], "2018-2023" = ["2018-01-01", "2023-12-31"] }
+choose_on = "2018-2023"     # the period whose average score ranks the candidates
+
+[feature_sets]
+reversal_momentum = ["return_1d", "intraday_1d", "overnight_1d", "rsi_2", "bar_position", "market_intraday_1d",
+                     "momentum_60", "relative_momentum_60", "intraday_drift_60"]
+reversal_1 = ["return_1d"]
+market = ["market_intraday_1d"]
+
+[grid]
+"model.ridge" = [0.05, 0.25, 1.0]
+"sizing.hurdle_bps" = [20.0, 25.0, 30.0, 35.0, 40.0, 50.0]
+"sizing.risk_per_trade" = [0.001, 0.0025, 0.005, 0.01]
+"sizing.floor_weight" = [0.0, 0.005, 0.01]
