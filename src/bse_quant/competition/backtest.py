@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from bse_quant.competition import rules
+from bse_quant.competition.book import book_returns, trend_entries
 from bse_quant.competition.features import compute_features, intraday_vol
 from bse_quant.competition.model import Model, walk_forward_forecast
 from bse_quant.competition.portfolio import RiskManager, forecast_to_weights
@@ -12,10 +13,11 @@ from bse_quant.competition.portfolio import RiskManager, forecast_to_weights
 
 @dataclass
 class BacktestResult:
-    weights: pd.DataFrame  # row t = weights traded on day t (all dates; zero outside the window)
+    weights: pd.DataFrame  # row t = one-session weights traded on day t (all dates; zero outside the window)
     returns: pd.Series  # daily returns inside the window
     forecast: pd.DataFrame | dict  # row t = forecast for day t+1 (one table per sleeve if there are several)
     summary: dict
+    trend: pd.DataFrame | None = None  # row t = trend lots bought at t's open (held settings.trend.hold_days sessions)
 
 
 def window_mask(data, settings) -> pd.Series:
@@ -97,6 +99,15 @@ def run_backtest(data, settings, model=None, forecast: pd.DataFrame | None = Non
     risk = RiskManager(settings.risk.drawdown_limit, settings.risk.drawdown_scale)
     in_window = traded.loc[window]
     traded.loc[window] = apply_drawdown_brake(in_window, data, risk)
-    returns = rules.portfolio_returns(traded, data).loc[window]
     active = traded.loc[window].abs().sum(axis=1) > 0
-    return BacktestResult(weights=traded, returns=returns, forecast=forecast, summary=rules.summary(returns, active))
+    t = settings.trend
+    if not t.weight:
+        returns = rules.portfolio_returns(traded, data).loc[window]
+        return BacktestResult(weights=traded, returns=returns, forecast=forecast, summary=rules.summary(returns, active))
+    trend = trend_entries(data, t.lookback, t.hold_days, t.long_only).where(window, 0.0) * t.weight
+    entries = {1: traded}
+    entries[t.hold_days] = entries.get(t.hold_days, 0.0) + trend
+    book = book_returns(entries, data)
+    returns = book.returns.loc[window]
+    active |= book.gross.loc[window] > 0
+    return BacktestResult(traded, returns, forecast, rules.summary(returns, active), trend)

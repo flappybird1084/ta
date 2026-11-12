@@ -49,6 +49,7 @@ def config_name(config: dict) -> str:
 def apply_overrides(base, config: dict, feature_sets: dict):
     s = copy.deepcopy(base)
     s.sleeves = {}  # the grid describes one model; blended sleeves are set up in competition.toml
+    s.trend.weight = 0.0  # ...and no trend holds, unless the grid sets trend.weight
     for key, value in config.items():
         if key == "features":
             s.features = {name: name in feature_sets[value] for name in s.features}

@@ -68,7 +68,11 @@ def backtest_main(argv=None):
     r = result.returns
     print(f"Competition backtest {r.index[0].date()} to {r.index[-1].date()}  ({len(data.assets)} assets)")
     for name, weight, s in settings.sleeve_list():
-        print(f"Sleeve {name} ({weight:.0%}): {', '.join(s.feature_names)}")
+        print(f"Sleeve {name} ({weight:.1%}): {', '.join(s.feature_names)}")
+    t = settings.trend
+    if t.weight:
+        side = "long only" if t.long_only else "long/short"
+        print(f"Trend holds ({t.weight:.1%}): {t.lookback}-day trend, each buy held {t.hold_days} sessions, {side}")
     if not settings.data.include_holdout:
         print(f"Holdout: data from {settings.data.holdout_start} on is kept aside (include_holdout = true to use it)")
     print("\n" + _fmt(result.summary) + "\n")

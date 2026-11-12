@@ -4,11 +4,12 @@
 #  Run it with:    uv run competition-backtest
 #  (or try a copy: uv run competition-backtest --config my_experiment.toml)
 #
-#  The rules we trade under: weights are chosen after a day's close, bought at
-#  the next open and sold at that day's close. sum(|weights|) <= 100%. Every
-#  trade costs 0.05% to enter and 0.05% to exit (about 0.10% per day traded).
+#  The rules we trade under: weights are chosen after a day's close and bought
+#  at the next open. A position may be held for up to about a month (21
+#  sessions) and is sold at a close. Everything held, plus new buys, must fit
+#  in 100% of the account. Every trade costs 0.05% to enter and 0.05% to exit.
 #
-#  The SUBMITTED system is the blend in [sleeves] at the bottom. It was chosen
+#  The SUBMITTED system is the blend in [sleeves] plus the [trend] holds at the bottom. It was chosen
 #  with `uv run competition-score` (competition_score.toml), which estimates the
 #  rank-based competition score against assumed competitors. The sections above
 #  it are shared defaults; the settings search tools use them as one model.
@@ -75,7 +76,7 @@ volatility_ratio = false       # getting wilder or calmer
 # -----------------------------------------------------------------------------
 
 [sleeves.market_reversal]      # fade yesterday's market-wide intraday move
-weight = 0.5
+weight = 0.425
 features = ["market_intraday_1d"]
 ridge = 0.25
 hurdle_bps = 25.0
@@ -83,10 +84,28 @@ risk_per_trade = 0.01
 floor_weight = 0.01
 
 [sleeves.reversal_momentum]    # stock-level reversal + 3-month momentum / intraday drift
-weight = 0.5
+weight = 0.425
 features = ["return_1d", "intraday_1d", "overnight_1d", "rsi_2", "bar_position", "market_intraday_1d",
             "momentum_60", "relative_momentum_60", "intraday_drift_60"]
 ridge = 0.05
 hurdle_bps = 35.0
 risk_per_trade = 0.01
 floor_weight = 0.005
+
+# -----------------------------------------------------------------------------
+#  TREND: multi-day holds (allowed by the organisers: positions must close within
+#  a month). Every day, 1/hold_days of this share buys the assets whose last
+#  `lookback` days' return is positive, equally weighted, and holds them for
+#  `hold_days` sessions. Holding is cheap (costs only on entry and exit) and earns
+#  the overnight moves the one-session sleeves never see. weight = 0 switches it off.
+#
+#  Why 15% / 20 days / 5 sessions: in competition-score trials it added ~2 points
+#  in both 2018-21 and 2022-23 (and neighbouring settings did about as well),
+#  mostly through CAGR. More than ~20% starts to cost drawdown points.
+# -----------------------------------------------------------------------------
+
+[trend]
+weight = 0.15
+lookback = 20
+hold_days = 5
+long_only = true

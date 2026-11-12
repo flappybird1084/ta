@@ -9,6 +9,7 @@ entries. Each is a table of weights TRADED on each day.
 
 import pandas as pd
 
+from bse_quant.competition.book import book_returns, trend_entries
 from bse_quant.data import MarketData
 from bse_quant.strategies import STRATEGIES
 
@@ -37,6 +38,26 @@ COMPETENT = [
 ]  # fmt: skip
 
 
+# Teams that hold for days (the organisers allow holds of up to a month):
+# (lookback, hold_days, long_only, share of the account). lookback 0 = always long.
+MULTI_DAY = {
+    "buy_and_hold": (0, 21, True, 1.0),
+    "buy_and_hold_half": (0, 21, True, 0.5),
+    "trend_60": (60, 21, True, 1.0),
+    "trend_20": (20, 5, True, 1.0),
+    "trend_120_long_short": (120, 21, False, 1.0),
+    "trend_250": (250, 21, True, 1.0),
+}
+
+
+def multi_day_field(data: MarketData) -> pd.DataFrame:
+    """Daily returns of the multi-day teams, booked with real holding periods."""
+    return pd.DataFrame({
+        f"hold_{name}": book_returns({h: trend_entries(data, lookback, h, long_only) * share}, data).returns
+        for name, (lookback, h, long_only, share) in MULTI_DAY.items()
+    })  # fmt: skip
+
+
 def competitor_fields(data: MarketData, settings, seed=0) -> dict:
     """Daily returns of four assumed fields of other teams (all on the same days).
 
@@ -44,6 +65,7 @@ def competitor_fields(data: MarketData, settings, seed=0) -> dict:
     - naive+competent: plus four teams running models like ours (at ~1% risk per trade)
     - cautious: naive teams that cut their exposure to 30%, + the competent ones
     - strong: naive+competent plus three teams with a Sharpe of about 1 (10% volatility)
+    - multi-day: naive+competent plus teams that buy and hold or follow trends for days
     """
     import copy
 
@@ -57,6 +79,7 @@ def competitor_fields(data: MarketData, settings, seed=0) -> dict:
     for i, c in enumerate(COMPETENT):
         s = copy.deepcopy(settings)
         s.sleeves = {}
+        s.trend.weight = 0.0
         s.data.include_holdout = True
         s.data.start_date = str(data.dates[0].date())
         s.features = {name: name in c["features"] for name in s.features}
@@ -72,4 +95,5 @@ def competitor_fields(data: MarketData, settings, seed=0) -> dict:
         "naive+competent": pd.concat([naive, competent], axis=1),
         "cautious": pd.concat([naive * 0.3, competent], axis=1),
         "strong": pd.concat([naive, competent, strong], axis=1),
+        "multi-day": pd.concat([naive, competent, multi_day_field(data)], axis=1),
     }

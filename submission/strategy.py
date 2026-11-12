@@ -8,7 +8,15 @@
   {"Asset_A": {"Date": "2023-10-09", "Open": ..., "High": ..., "Low": ..., "Close": ..., "Volume": ...}, ...}
   (a DataFrame with one row per asset also works; field names are case-insensitive).
 - Returns {"Asset_A": 0.25, "Asset_B": -0.10, ...}: signed fractions of equity
-  for the NEXT session, with sum(|w|) <= 1.
+  we will hold during the NEXT session (positions carried over + new buys),
+  with sum(|w|) <= 1.
+
+Positions are held for a fixed number of sessions, and the program keeps its own
+books, so a wrapper can read exactly what it is doing:
+- `last_orders()`: {hold_days: {asset: weight}}, the new positions to buy at the
+  next open and how many sessions to hold each (1 = sell at that day's close).
+- `positions()`: every open position with its weight and sessions left.
+- `equity()`: the account value (starting at 1.0) from the program's own trades.
 
 `initialize(history=...)` loads the public development history (a folder of
 Asset_*.csv files, or a MarketData) so the indicators are warm on day one. If
@@ -56,3 +64,18 @@ def on_day_close(daily_data, portfolio_state=None) -> dict:
     if _trader is None:
         initialize(history=DEFAULT_HISTORY if DEFAULT_HISTORY.exists() else None)
     return _trader.on_day_close(daily_data, portfolio_state)
+
+
+def last_orders() -> dict:
+    """{hold_days: {asset: weight}} to buy at the next open, held that many sessions."""
+    return _trader.last_orders if _trader is not None else {}
+
+
+def positions() -> list:
+    """Open positions: [{"asset", "weight", "hold_days", "sessions_left"}, ...]."""
+    return _trader.positions() if _trader is not None else []
+
+
+def equity() -> float:
+    """Account value from our own trades (1.0 = the starting capital)."""
+    return _trader.equity if _trader is not None else 1.0

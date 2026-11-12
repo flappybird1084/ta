@@ -97,3 +97,15 @@ def test_stricter_eligibility_for_our_candidates():
     loose = simulate_scores(ours, field, n_trials=10, length=300, block=10, seed=0)
     strict = simulate_scores(ours, field, n_trials=10, length=300, block=10, seed=0, our_min_active=200)
     assert loose.loc["some", "Score"] > 0 and strict.loc["some", "Score"] == 0
+
+
+def test_multi_day_teams_hold_for_days_and_are_in_their_own_field():
+    from bse_quant.competition.competitors import MULTI_DAY, multi_day_field
+
+    data = random_market_data(n_days=400, n_assets=4, seed=6)
+    field = multi_day_field(data)
+    assert list(field.columns) == [f"hold_{name}" for name in MULTI_DAY]
+    assert field.notna().all().all() and (field > -1).all().all()
+    # buy and hold earns the whole market, overnight moves included
+    market = (data.close / data.close.shift(1) - 1).mean(axis=1).iloc[30:]
+    assert np.corrcoef(field["hold_buy_and_hold"].iloc[30:], market)[0, 1] > 0.95

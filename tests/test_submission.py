@@ -107,3 +107,26 @@ def test_replaying_a_known_day_does_not_duplicate_it(setup):
     before = trader.history["close"].copy()
     strategy.on_day_close(bars_for(data, len(data.dates) - 1))
     pd.testing.assert_frame_equal(trader.history["close"], before, check_freq=False)
+
+
+def test_submission_reports_orders_positions_and_equity():
+    import importlib
+    import sys
+    from pathlib import Path
+
+    from bse_quant.data import load_market_data
+
+    root = Path(__file__).resolve().parent.parent
+    if not (root / "data").exists():
+        pytest.skip("needs the public data folder")
+    sys.path.insert(0, str(root / "submission"))
+    strategy = importlib.import_module("strategy")
+    data = load_market_data(root / "data")
+    strategy.initialize(history=root / "data")
+    for t in range(len(data.dates) - 10, len(data.dates)):
+        bars = {f"Asset_{a}".replace("Asset_Asset_", "Asset_"): {f: getattr(data, f).iat[t, j] for f in ("open", "high", "low", "close", "volume")} | {"date": data.dates[t]} for j, a in enumerate(data.assets)}
+        w = strategy.on_day_close(bars)
+    assert sum(abs(v) for v in w.values()) <= 1 + 1e-9
+    assert set(strategy.last_orders()) == {1, 5}  # one-session trades + 5-session trend holds
+    assert all(p["hold_days"] in (1, 5) and 1 <= p["sessions_left"] <= 5 for p in strategy.positions())
+    assert isinstance(strategy.equity(), float)

@@ -105,7 +105,7 @@ uv run pytest
 
 ## Competition system (BSE Quant Track)
 
-The competition rules are different from the backtester above: positions are opened at a day's open and closed at its close, sum(|weights|) ≤ 100%, and each trade pays 5 bps in and 5 bps out. That system lives in `src/bse_quant/competition/` and is driven by **`competition.toml`** (features on/off, hurdle, sizing, risk).
+The competition rules are different from the backtester above: positions are opened at a day's open and closed at a close, after 1 session or after several (up to about a month); everything held must fit in 100% of the account, and each trade pays 5 bps in and 5 bps out. The position book that tracks this is `src/bse_quant/competition/book.py`. That system lives in `src/bse_quant/competition/` and is driven by **`competition.toml`** (features on/off, hurdle, sizing, risk).
 
 | Command | What it does |
 |---|---|

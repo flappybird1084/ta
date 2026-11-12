@@ -90,3 +90,13 @@ def test_load_search_reads_a_grid_file(tmp_path):
     assert len(expand_grid(grid)) == 2
     assert grid["features"] == {"a": ["return_1d"]}
     assert grid["sizing.hurdle_bps"] == [10.0, 20.0]
+
+
+def test_grid_settings_are_one_model_without_trend_unless_asked():
+    from bse_quant.competition.search import apply_overrides
+    from bse_quant.competition.settings import CompetitionSettings
+
+    base = CompetitionSettings()
+    base.trend.weight = 0.15
+    assert apply_overrides(base, {}, {}).trend.weight == 0.0
+    assert apply_overrides(base, {"trend.weight": 0.1}, {}).trend.weight == 0.1

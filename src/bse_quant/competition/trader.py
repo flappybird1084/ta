@@ -4,7 +4,10 @@
     weights = trader.on_day_close(daily_data, portfolio_state)
 
 It keeps the recent price history, recomputes the features after every close
-and returns tomorrow's weights. It is checked against the research backtest
+and returns tomorrow's weights. It also keeps its own books (book.Book): every
+position, how many sessions it has left, and the account's equity, so it
+always knows its real PnL. `last_orders` = {hold_days: {asset: weight}} are
+the new positions to buy at the next open and how long to hold each. It is checked against the research backtest
 (tests/test_competition.py) so both trade exactly the same way.
 """
 
@@ -14,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from bse_quant.competition import rules
+from bse_quant.competition.book import Book, trend_weights
 from bse_quant.competition.features import compute_features, intraday_vol
 from bse_quant.competition.model import Model, models_from_dict
 from bse_quant.competition.portfolio import RiskManager, forecast_to_weights
@@ -57,9 +61,27 @@ class Trader:
         if missing:
             raise ValueError(f"No fitted model for sleeve(s) {missing}; re-run `uv run competition-fit`")
         self.risk = RiskManager(settings.risk.drawdown_limit, settings.risk.drawdown_scale)
+        self.trend = settings.trend
         self.history = None if history is None else {f: getattr(history, f).iloc[-MAX_HISTORY:].copy() for f in FIELDS}
-        self.last_weights = None  # what we hold during the session that is about to be reported
-        self.equity = self.peak = 1.0
+        self.assets = [] if self.history is None else list(self.history["close"].columns)
+        self.holds = sorted({1, self.trend.hold_days} if self.trend.weight else {1})
+        self.book = Book(len(self.assets), self.holds)
+        self.last_orders = None  # {hold_days: {asset: weight}} bought at the open of the session about to be reported
+        self.peak = 1.0
+
+    @property
+    def equity(self) -> float:
+        return self.book.equity
+
+    def positions(self) -> list:
+        """Every open position: asset, weight (of equity), its hold period and the sessions it has left."""
+        out = []
+        for h, lots in self.book.lots.items():
+            for k, row in enumerate(lots):
+                for asset, x in zip(self.assets, row):
+                    if x:
+                        out.append({"asset": asset, "weight": float(x / self.equity), "hold_days": h, "sessions_left": k + 1})
+        return out
 
     @classmethod
     def from_files(cls, model_path, settings_path, history: MarketData | None = None):
@@ -77,18 +99,33 @@ class Trader:
         date, bars = parse_daily_data(daily_data)
         self._book_session(bars)
         self._append(date, bars)
-        weights = self._decide() * self.risk.scale(self.equity, self.peak)
-        self.last_weights = weights
-        out = {asset: float(weights.get(asset, 0.0)) for asset in bars.index}
+        new_assets = [a for a in self.history["close"].columns if a not in self.assets]
+        if new_assets:
+            self.assets += new_assets
+            self.book.add_assets(len(new_assets))
+        orders = self._decide()
+        orders[1] = orders[1] * self.risk.scale(self.equity, self.peak)
+        self.last_orders = {h: {a: float(w.get(a, 0.0)) for a in self.assets} for h, w in orders.items()}
+        # what we expect to hold next session: the lots carried over plus the new ones
+        carried = pd.Series(self.book.exposure() / self.equity if self.equity > 0 else 0.0, self.assets)
+        total = carried + sum(orders.values()).reindex(self.assets).fillna(0.0)
+        gross = total.abs().sum()
+        if gross > rules.MAX_GROSS:  # price drift of the carried lots; the book scales new buys to fit the same way
+            total *= rules.MAX_GROSS / gross
+        out = {asset: float(total.get(asset, 0.0)) for asset in bars.index}
         rules.check_weights(out)
         return out
 
     def _book_session(self, bars):
-        if self.last_weights is None:
+        """Book the session that just closed: overnight gap, the open's buys, the day's move, the close's sales."""
+        if self.last_orders is None:
             return
-        w = self.last_weights.reindex(bars.index).fillna(0.0)
-        moves = (bars["close"] / bars["open"] - 1).fillna(0.0)
-        self.equity *= 1 + rules.day_return(w.to_numpy(), moves.to_numpy())
+        prev_close = self.history["close"].iloc[-1].reindex(self.assets)
+        b = bars.reindex(self.assets)
+        gap = (b["open"] / prev_close - 1).fillna(0.0).to_numpy()
+        intraday = (b["close"] / b["open"] - 1).fillna(0.0).to_numpy()
+        entries = {h: np.array([w.get(a, 0.0) for a in self.assets]) for h, w in self.last_orders.items()}
+        self.book.session(gap, intraday, entries)
         self.peak = max(self.peak, self.equity)
 
     def _append(self, date, bars):
@@ -109,10 +146,11 @@ class Trader:
             else:
                 self.history[f] = pd.concat([df, row.to_frame(date).T]).iloc[-MAX_HISTORY:]
 
-    def _decide(self) -> pd.Series:
+    def _decide(self) -> dict:
+        """{hold_days: weights} to buy at the next open."""
         data = MarketData(**self.history)
         if len(data.dates) < 2:
-            return pd.Series(0.0, index=data.assets)
+            return {h: pd.Series(0.0, index=data.assets) for h in self.holds}
         names = sorted({n for m in self.models.values() for n in m.names})
         feats = {k: v.iloc[[-1]] for k, v in compute_features(data, names).items()}
         vol = intraday_vol(data).iloc[[-1]]
@@ -124,4 +162,9 @@ class Trader:
                 forecast, vol, s.hurdle_bps, s.risk_per_trade, s.max_asset_weight, s.long_only, s.floor_weight, s.floor_weekday
             )
             total = total + weight * w.iloc[0]
-        return total.replace([np.inf, -np.inf], 0.0).fillna(0.0)
+        orders = {1: total.replace([np.inf, -np.inf], 0.0).fillna(0.0)}
+        t = self.trend
+        if t.weight:
+            trend = trend_weights(data, t.lookback, t.hold_days, t.long_only).iloc[-1] * t.weight
+            orders[t.hold_days] = orders.get(t.hold_days, 0.0) + trend
+        return orders

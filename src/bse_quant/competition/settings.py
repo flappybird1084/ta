@@ -48,11 +48,20 @@ class RiskSettings:
 
 
 @dataclass
+class TrendSettings:
+    weight: float = 0.0  # 0 = off; share of the account given to multi-day trend holds
+    lookback: int = 20  # hold an asset when its last `lookback` days' return is positive (0 = always)
+    hold_days: int = 5  # each day's trend buys are held this many sessions (at most 21, about a month)
+    long_only: bool = True  # false = also short assets that are falling
+
+
+@dataclass
 class CompetitionSettings:
     data: DataSettings = field(default_factory=DataSettings)
     model: ModelSettings = field(default_factory=ModelSettings)
     sizing: SizingSettings = field(default_factory=SizingSettings)
     risk: RiskSettings = field(default_factory=RiskSettings)
+    trend: TrendSettings = field(default_factory=TrendSettings)
     features: dict = field(default_factory=lambda: {name: name in DEFAULT_FEATURES for name in FEATURES})
     sleeves: dict = field(default_factory=dict)  # name -> {"weight": .., "features": [..], model/sizing overrides}
 
@@ -79,7 +88,8 @@ class CompetitionSettings:
         return out
 
 
-SECTIONS = {"data": DataSettings, "model": ModelSettings, "sizing": SizingSettings, "risk": RiskSettings}
+SECTIONS = {"data": DataSettings, "model": ModelSettings, "sizing": SizingSettings, "risk": RiskSettings, "trend": TrendSettings}
+MAX_HOLD_DAYS = 21  # positions must close within about a month of trading days
 SLEEVE_KEYS = {f.name: section for section in ("model", "sizing") for f in fields(SECTIONS[section])}
 
 
@@ -139,6 +149,18 @@ def load_settings(path) -> CompetitionSettings:
         _check_types(section, values, defaults)
         for key, value in values.items():
             setattr(getattr(settings, section), key, value)
+    trend = settings.trend
+    if not 1 <= trend.hold_days <= MAX_HOLD_DAYS:
+        raise ConfigError(f"[trend] hold_days must be 1..{MAX_HOLD_DAYS}: positions must close within a month")
+    if trend.weight < 0 or trend.lookback < 0:
+        raise ConfigError("[trend] weight and lookback must be >= 0")
+    if trend.weight and settings.risk.drawdown_limit:
+        raise ConfigError("[risk] drawdown_limit can't be combined with [trend] yet; switch one of them off")
+    sleeves = sum(w for _, w, _ in settings.sleeve_list())
+    if sleeves + trend.weight > 1 + 1e-9:
+        raise ConfigError(
+            f"[sleeves] weights ({sleeves:g}) and [trend] weight ({trend.weight:g}) add up to more than 1 (100% of the account)"
+        )
     if not settings.feature_names:
         raise ConfigError("[features] switch on at least one feature")
     return settings
